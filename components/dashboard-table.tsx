@@ -40,14 +40,28 @@ export function DashboardTable({ config }: DashboardTableProps) {
     }
   }, [columns, visibleColumns])
 
-  const filteredData = processedData.filter((row) =>
-    Object.entries(row).some(
-      ([key, value]) => visibleColumns.includes(key) && String(value).toLowerCase().includes(searchTerm.toLowerCase()),
-    ),
-  )
+  const filteredData = processedData.filter((row) => {
+    if (!row || typeof row !== "object") return false
 
-  const totalPages = Math.ceil(filteredData.length / pageSize)
-  const paginatedData = filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+    return Object.entries(row).some(([key, value]) => {
+      if (!visibleColumns.includes(key)) return false
+      if (value === null || value === undefined) return false
+
+      const stringValue = String(value).toLowerCase()
+      return stringValue.includes(searchTerm.toLowerCase())
+    })
+  })
+
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / pageSize))
+  const currentPageSafe = Math.min(currentPage, totalPages)
+  const paginatedData = filteredData.slice((currentPageSafe - 1) * pageSize, currentPageSafe * pageSize)
+
+  // Update current page if it's out of bounds
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
 
   const toggleColumn = (column: string) => {
     setVisibleColumns((prev) => (prev.includes(column) ? prev.filter((col) => col !== column) : [...prev, column]))
@@ -135,7 +149,12 @@ export function DashboardTable({ config }: DashboardTableProps) {
                     (column) =>
                       visibleColumns.includes(column) && (
                         <TableCell key={column} className="max-w-[200px] truncate">
-                          {row[column] !== null && row[column] !== undefined ? String(row[column]) : ""}
+                          {(() => {
+                            const value = row[column]
+                            if (value === null || value === undefined) return ""
+                            if (typeof value === "object") return JSON.stringify(value)
+                            return String(value)
+                          })()}
                         </TableCell>
                       ),
                   )}

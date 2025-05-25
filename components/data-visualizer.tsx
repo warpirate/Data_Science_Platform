@@ -85,6 +85,7 @@ import {
 } from "lucide-react"
 import { useData } from "@/lib/data-context"
 import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import React from "react"
 
 // Color palettes
 const COLOR_PALETTES = {
@@ -213,39 +214,50 @@ interface DatasetProfile {
 }
 
 // Add a simple error boundary component to catch rendering errors
-function ErrorBoundary({ children, onError }) {
-  const [hasError, setHasError] = useState(false)
-  const [errorMessage, setErrorMessage] = useState("")
-
-  useEffect(() => {
-    const handleError = (error) => {
-      console.error("Chart rendering error:", error)
-      setErrorMessage(error.message || "Error rendering chart")
-      setHasError(true)
-      if (onError) onError(error)
-    }
-
-    window.addEventListener("error", handleError)
-    return () => window.removeEventListener("error", handleError)
-  }, [onError])
-
-  if (hasError) {
-    return (
-      <div className="p-8 text-center border border-red-200 rounded-md bg-red-50">
-        <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
-        <h3 className="text-lg font-medium text-red-800">Chart Rendering Error</h3>
-        <p className="mt-2 text-red-600">
-          {errorMessage || "There was an error rendering this chart. Try selecting different data or chart type."}
-        </p>
-        <Button variant="outline" className="mt-4" onClick={() => setHasError(false)}>
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Try Again
-        </Button>
-      </div>
-    )
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode; onError?: (error: Error) => void },
+  { hasError: boolean; errorMessage: string }
+> {
+  constructor(props: any) {
+    super(props)
+    this.state = { hasError: false, errorMessage: "" }
   }
 
-  return children
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMessage: error.message || "Error rendering chart" }
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("Chart rendering error:", error, errorInfo)
+    if (this.props.onError) {
+      this.props.onError(error)
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 text-center border border-red-200 rounded-md bg-red-50">
+          <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+          <h3 className="text-lg font-medium text-red-800">Chart Rendering Error</h3>
+          <p className="mt-2 text-red-600">
+            {this.state.errorMessage ||
+              "There was an error rendering this chart. Try selecting different data or chart type."}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => this.setState({ hasError: false, errorMessage: "" })}
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
+        </div>
+      )
+    }
+
+    return this.props.children
+  }
 }
 
 // Helper function to determine if a column is compatible with a chart type
@@ -1281,10 +1293,16 @@ export function DataVisualizer() {
   const chartData = useMemo(() => {
     if (autoUpdatePreview || needsUpdate) {
       setIsLoading(true)
-      const data = prepareChartData()
-      setIsLoading(false)
-      setNeedsUpdate(false)
-      return data
+      try {
+        const data = prepareChartData()
+        setIsLoading(false)
+        setNeedsUpdate(false)
+        return data
+      } catch (error) {
+        setIsLoading(false)
+        setError(`Error preparing chart data: ${error instanceof Error ? error.message : "Unknown error"}`)
+        return []
+      }
     }
     return []
   }, [
@@ -1304,7 +1322,7 @@ export function DataVisualizer() {
     stackedChart,
     selectedCategories,
     sortData,
-    validationErrors,
+    validationErrors.length,
     dataPercentage,
   ])
 
@@ -1323,42 +1341,57 @@ export function DataVisualizer() {
     )
   }
 
-  // Export chart as image
   const exportChart = () => {
-    if (!chartRef.current) return
+    if (!chartRef.current) {
+      setError("Chart reference not available for export")
+      return
+    }
 
     try {
-      const svgElement = chartRef.current.container.children[0]
+      const chartContainer = chartRef.current.container
+      if (!chartContainer || !chartContainer.children[0]) {
+        setError("Chart container not found")
+        return
+      }
+
+      const svgElement = chartContainer.children[0]
       const svgData = new XMLSerializer().serializeToString(svgElement)
       const canvas = document.createElement("canvas")
       const ctx = canvas.getContext("2d")
 
-      // Create an image to draw to canvas
+      if (!ctx) {
+        setError("Canvas context not available")
+        return
+      }
+
       const img = new Image()
       img.setAttribute("crossOrigin", "anonymous")
 
       img.onload = () => {
-        canvas.width = img.width
-        canvas.height = img.height
+        try {
+          canvas.width = img.width || 800
+          canvas.height = img.height || 600
 
-        // Draw white background
-        ctx.fillStyle = "white"
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
+          ctx.fillStyle = "white"
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+          ctx.drawImage(img, 0, 0)
 
-        // Draw the image
-        ctx.drawImage(img, 0, 0)
-
-        // Create download link
-        const downloadLink = document.createElement("a")
-        downloadLink.download = `${chartTitle || "chart"}.png`
-        downloadLink.href = canvas.toDataURL("image/png")
-        downloadLink.click()
+          const downloadLink = document.createElement("a")
+          downloadLink.download = `${chartTitle || "chart"}.png`
+          downloadLink.href = canvas.toDataURL("image/png")
+          downloadLink.click()
+        } catch (error) {
+          setError(`Failed to export chart: ${error instanceof Error ? error.message : "Unknown error"}`)
+        }
       }
 
-      img.src = `data:image/svg+xml;base64,${btoa(svgData)}`
+      img.onerror = () => {
+        setError("Failed to load chart image for export")
+      }
+
+      img.src = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgData)))}`
     } catch (error) {
-      console.error("Failed to export chart:", error)
-      setError(`Failed to export chart: ${error.message}`)
+      setError(`Failed to export chart: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 

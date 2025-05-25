@@ -67,26 +67,37 @@ export function DashboardChart({ config }: DashboardChartProps) {
 
   // Prepare data for visualization
   const prepareChartData = () => {
-    if (!xAxis || !yAxis || processedData.length === 0) return []
+    try {
+      if (!xAxis || !yAxis || processedData.length === 0) return []
 
-    if (chartType === "pie") {
-      // For pie charts, we need to aggregate data by the x-axis
-      const aggregatedData = processedData.reduce((acc, row) => {
-        const key = String(row[xAxis])
-        if (!acc[key]) {
-          acc[key] = 0
-        }
-        acc[key] += Number(row[yAxis]) || 0
-        return acc
-      }, {})
+      if (chartType === "pie") {
+        const aggregatedData = processedData.reduce(
+          (acc, row) => {
+            const key = String(row[xAxis] || "Unknown")
+            if (!acc[key]) {
+              acc[key] = 0
+            }
+            const value = Number(row[yAxis])
+            acc[key] += isNaN(value) ? 0 : value
+            return acc
+          },
+          {} as Record<string, number>,
+        )
 
-      return Object.entries(aggregatedData).map(([name, value]) => ({ name, value }))
-    } else {
-      // For regular charts
-      return processedData.map((row) => ({
-        name: row[xAxis],
-        value: Number(row[yAxis]) || 0,
-      }))
+        return Object.entries(aggregatedData)
+          .map(([name, value]) => ({ name, value }))
+          .filter((item) => item.value > 0)
+      } else {
+        return processedData
+          .map((row) => ({
+            name: row[xAxis] || "Unknown",
+            value: Number(row[yAxis]) || 0,
+          }))
+          .filter((item) => !isNaN(item.value))
+      }
+    } catch (error) {
+      console.error("Error preparing chart data:", error)
+      return []
     }
   }
 
@@ -172,10 +183,18 @@ export function DashboardChart({ config }: DashboardChartProps) {
 
       <div className="h-[300px] w-full">
         <ResponsiveContainer width="100%" height="100%">
-          {chartType === "bar" && (
+          {chartType === "bar" && chartData.length > 0 && (
             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 50 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" angle={-45} textAnchor="end" height={60} interval={0} tick={{ fontSize: 12 }} />
+              <XAxis
+                dataKey="name"
+                angle={-45}
+                textAnchor="end"
+                height={60}
+                interval={0}
+                tick={{ fontSize: 12 }}
+                tickFormatter={(value) => String(value).substring(0, 10)}
+              />
               <YAxis />
               <Tooltip />
               <Legend />

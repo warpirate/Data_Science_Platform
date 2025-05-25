@@ -94,7 +94,6 @@ console.log('Groups:', Object.keys(groups))`)
     setError(null)
     setProcessingProgress(0)
 
-    // Simulate progress
     const progressInterval = setInterval(() => {
       setProcessingProgress((prev) => {
         if (prev >= 90) {
@@ -106,28 +105,27 @@ console.log('Groups:', Object.keys(groups))`)
     }, 100)
 
     try {
-      // Apply the appropriate preprocessing based on the active tab
       if (activeTab === "missing") {
-        applyPreprocessing("missing", {
+        await applyPreprocessing("missing", {
           columns: selectedColumns,
           strategy,
           value: constantValue,
         })
       } else if (activeTab === "normalize") {
-        applyPreprocessing("normalize", {
+        await applyPreprocessing("normalize", {
           columns: selectedColumns,
           method: normalizationMethod,
         })
       } else if (activeTab === "transform") {
-        applyPreprocessing("transform", {
+        await applyPreprocessing("transform", {
           columns: selectedColumns,
           action: "drop",
         })
       } else if (activeTab === "outliers") {
-        handleOutliers(selectedColumns, outlierMethod, outlierAction)
+        await handleOutliers(selectedColumns, outlierMethod, outlierAction)
       }
 
-      // Complete progress and show success
+      clearInterval(progressInterval)
       setProcessingProgress(100)
       setIsSuccess(true)
       setTimeout(() => {
@@ -138,6 +136,7 @@ console.log('Groups:', Object.keys(groups))`)
       clearInterval(progressInterval)
       setError(err instanceof Error ? err.message : "An error occurred during processing")
       setProcessingProgress(0)
+      setTimeout(() => setError(null), 5000)
     }
   }
 
@@ -188,19 +187,11 @@ console.log('Groups:', Object.keys(groups))`)
     setIsExecuting(true)
     setCodeOutput("")
 
-    // Capture console.log output
-    const originalLog = console.log
-    const logs: string[] = []
-    console.log = (...args) => {
-      logs.push(args.map((arg) => (typeof arg === "object" ? JSON.stringify(arg, null, 2) : String(arg))).join(" "))
-      originalLog(...args)
-    }
-
     try {
       const result = await executeCustomCode(pythonCode)
 
       if (result.success) {
-        let output = logs.join("\n")
+        let output = result.output || ""
         if (result.result !== undefined) {
           output += output ? "\n\nResult:\n" : "Result:\n"
           output += typeof result.result === "object" ? JSON.stringify(result.result, null, 2) : String(result.result)
@@ -212,7 +203,6 @@ console.log('Groups:', Object.keys(groups))`)
     } catch (err) {
       setCodeOutput(`Execution Error: ${err instanceof Error ? err.message : "Unknown error"}`)
     } finally {
-      console.log = originalLog
       setIsExecuting(false)
     }
   }

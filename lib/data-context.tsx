@@ -62,6 +62,34 @@ interface DataQualityIssue {
   suggestion: string
 }
 
+interface MLModel {
+  id: string
+  name: string
+  type: string
+  createdAt: Date
+  // Add other model properties as needed
+}
+
+interface ModelComparison {
+  id: string
+  name: string
+  models: MLModel[]
+  comparisonMetrics: ComparisonMetrics
+  createdAt: Date
+}
+
+interface ComparisonMetrics {
+  bestModel: string
+  rankings: Array<{
+    modelId: string
+    rank: number
+    score: number
+    strengths: string[]
+    weaknesses: string[]
+  }>
+  crossValidationResults: Record<string, any>
+}
+
 interface DataContextType {
   rawData: DataRow[]
   processedData: DataRow[]
@@ -84,7 +112,7 @@ interface DataContextType {
       method?: string
       action?: string
     },
-  ) => void
+  ) => Promise<void>
   exportData: (format: "csv" | "xlsx") => void
   resetData: () => void
   notebookCells: NotebookCell[]
@@ -93,16 +121,35 @@ interface DataContextType {
   removeCell: (id: string) => void
   reorderCells: (startIndex: number, endIndex: number) => void
   detectOutliers: (columns: string[], method: string) => { column: string; outliers: number[] }[]
-  handleOutliers: (columns: string[], method: string, action: string) => void
+  handleOutliers: (columns: string[], method: string, action: string) => Promise<void>
   createFeature: (name: string, expression: string, type: string) => void
   binColumn: (column: string, bins: number, labels?: string[]) => void
-  executeCustomCode: (code: string) => Promise<{ success: boolean; result?: any; error?: string }>
+  executeCustomCode: (code: string) => Promise<{ success: boolean; result?: any; error?: string; output?: string }>
   getDataSample: (sampleSize: number) => DataRow[]
   generateDataProfile: () => Promise<void>
   refreshDataProfile: () => Promise<void>
+  trainedModels: MLModel[]
+  saveTrainedModel: (model: MLModel) => void
+  getTrainedModels: () => MLModel[]
+  removeTrainedModel: (modelId: string) => void
+  modelComparisons: ModelComparison[]
+  saveModelComparison: (comparison: ModelComparison) => void
+  getModelComparisons: () => ModelComparison[]
+  removeModelComparison: (comparisonId: string) => void
+  downloadModel: (modelId: string) => void
 }
 
-export type CellType = "data" | "visualization" | "preprocessing" | "exploration" | "text" | "code" | "profile"
+export type CellType =
+  | "data"
+  | "visualization"
+  | "preprocessing"
+  | "exploration"
+  | "text"
+  | "code"
+  | "profile"
+  | "ml-trainer"
+  | "ml-predictor"
+  | "ml-insights"
 
 export interface NotebookCell {
   id: string
@@ -124,6 +171,154 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [notebookCells, setNotebookCells] = useState<NotebookCell[]>([])
   const [dataProfile, setDataProfile] = useState<DataProfile | null>(null)
   const [isProfileLoading, setIsProfileLoading] = useState<boolean>(false)
+  const [trainedModels, setTrainedModels] = useState<MLModel[]>([])
+  const [modelComparisons, setModelComparisons] = useState<ModelComparison[]>([])
+
+  // Load trained models from localStorage on initialization
+  useEffect(() => {
+    const storedModels = localStorage.getItem("trainedModels")
+    if (storedModels) {
+      try {
+        const models = JSON.parse(storedModels)
+        setTrainedModels(models)
+      } catch (error) {
+        console.error("Failed to load trained models:", error)
+      }
+    }
+  }, [])
+
+  // Save trained models to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem("trainedModels", JSON.stringify(trainedModels))
+  }, [trainedModels])
+
+  // Load model comparisons from localStorage on initialization
+  useEffect(() => {
+    const storedComparisons = localStorage.getItem("modelComparisons")
+    if (storedComparisons) {
+      try {
+        const comparisons = JSON.parse(storedComparisons)
+        setModelComparisons(comparisons)
+      } catch (error) {
+        console.error("Failed to load model comparisons:", error)
+      }
+    }
+  }, [])
+
+  // Save model comparisons to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem("modelComparisons", JSON.stringify(modelComparisons))
+  }, [modelComparisons])
+
+  const saveTrainedModel = (model: MLModel) => {
+    setTrainedModels((prev) => {
+      const existing = prev.findIndex((m) => m.id === model.id)
+      if (existing >= 0) {
+        const updated = [...prev]
+        updated[existing] = model
+        return updated
+      } else {
+        return [...prev, model]
+      }
+    })
+  }
+
+  const getTrainedModels = () => trainedModels
+
+  const removeTrainedModel = (modelId: string) => {
+    setTrainedModels((prev) => prev.filter((m) => m.id !== modelId))
+  }
+
+  const saveModelComparison = (comparison: ModelComparison) => {
+    setModelComparisons((prev) => {
+      const existing = prev.findIndex((c) => c.id === comparison.id)
+      if (existing >= 0) {
+        const updated = [...prev]
+        updated[existing] = comparison
+        return updated
+      } else {
+        return [...prev, comparison]
+      }
+    })
+  }
+
+  const getModelComparisons = () => modelComparisons
+
+  const removeModelComparison = (comparisonId: string) => {
+    setModelComparisons((prev) => prev.filter((c) => c.id !== comparisonId))
+  }
+
+  const downloadModel = (modelId: string) => {
+    const model = trainedModels.find((m) => m.id === modelId)
+    if (!model) {
+      throw new Error("Model not found")
+    }
+
+    // Create a comprehensive model package
+    const modelPackage = {
+      model: model,
+      metadata: {
+        exportedAt: new Date().toISOString(),
+        dataColumns: columns,
+        columnTypes: columnTypes,
+        dataShape: {
+          rows: processedData.length,
+          columns: columns.length,
+        },
+        version: "1.0.0",
+      },
+      implementation: {
+        algorithm: model.algorithm,
+        features: model.features,
+        target: model.target,
+        hyperparameters: model.hyperparameters,
+      },
+      usage: {
+        description: "This model package contains a trained ML model ready for integration",
+        requirements: ["Node.js", "TypeScript", "ML Models library"],
+        example: `
+// Import and use the model
+import { ${
+          model.algorithm === "linear_regression"
+            ? "SimpleLinearRegression"
+            : model.algorithm === "logistic_regression"
+              ? "SimpleLogisticRegression"
+              : model.algorithm === "kmeans"
+                ? "KMeansClustering"
+                : "SimpleDecisionTree"
+        } } from './ml-models'
+
+// Load model configuration
+const modelConfig = ${JSON.stringify(model.hyperparameters, null, 2)}
+
+// Create and configure model instance
+const model = new ${
+          model.algorithm === "linear_regression"
+            ? "SimpleLinearRegression"
+            : model.algorithm === "logistic_regression"
+              ? "SimpleLogisticRegression"
+              : model.algorithm === "kmeans"
+                ? "KMeansClustering"
+                : "SimpleDecisionTree"
+        }()
+
+// Use for predictions
+const prediction = model.predict(inputData)
+      `,
+      },
+    }
+
+    // Create downloadable file
+    const blob = new Blob([JSON.stringify(modelPackage, null, 2)], {
+      type: "application/json;charset=utf-8;",
+    })
+    const link = document.createElement("a")
+    const fileName = `${model.name.replace(/\s+/g, "_")}_${model.id}.json`
+
+    link.href = URL.createObjectURL(blob)
+    link.download = fileName
+    link.click()
+  }
 
   // Detect column types from data
   const detectColumnTypes = (data: DataRow[]): Record<string, ColumnType> => {
@@ -177,6 +372,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     setIsProfileLoading(true)
     try {
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       const profile: DataProfile = {
         overview: generateOverviewProfile(),
         columns: {},
@@ -187,20 +384,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       // Generate column profiles
       for (const column of columns) {
-        profile.columns[column] = await generateColumnProfile(column)
+        try {
+          profile.columns[column] = await generateColumnProfile(column)
+        } catch (err) {
+          console.warn(`Failed to profile column ${column}:`, err)
+          // Continue with other columns
+        }
       }
 
       // Generate correlations for numeric columns
       const numericColumns = columns.filter((col) => columnTypes[col] === "number")
       if (numericColumns.length > 1) {
-        profile.correlations = calculateCorrelations(numericColumns)
+        try {
+          profile.correlations = calculateCorrelations(numericColumns)
+        } catch (err) {
+          console.warn("Failed to calculate correlations:", err)
+          profile.correlations = {}
+        }
       }
 
       // Generate data quality issues
-      profile.dataQuality = generateDataQualityIssues(profile.columns)
+      try {
+        profile.dataQuality = generateDataQualityIssues(profile.columns)
+      } catch (err) {
+        console.warn("Failed to generate data quality issues:", err)
+        profile.dataQuality = []
+      }
 
       setDataProfile(profile)
     } catch (err) {
+      console.error("Error generating data profile:", err)
       setError(err instanceof Error ? err.message : "Failed to generate data profile")
     } finally {
       setIsProfileLoading(false)
@@ -653,7 +866,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // Apply preprocessing to data
-  const applyPreprocessing = (
+  const applyPreprocessing = async (
     type: string,
     options: {
       columns: string[]
@@ -663,42 +876,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
       action?: string
     },
   ) => {
-    setIsLoading(true)
-    const { columns: selectedColumns, strategy, value, method, action } = options
+    return new Promise<void>((resolve, reject) => {
+      setIsLoading(true)
+      const { columns: selectedColumns, strategy, value, method, action } = options
 
-    try {
-      let newData = [...processedData]
+      try {
+        let newData = [...processedData]
 
-      if (type === "missing") {
-        newData = handleMissingValues(newData, selectedColumns, strategy || "mean", value)
-      } else if (type === "normalize") {
-        newData = normalizeData(newData, selectedColumns, method || "minmax")
-      } else if (type === "transform") {
-        if (action === "drop") {
-          newData = dropColumns(newData, selectedColumns)
-          // Update columns after dropping
-          const remainingColumns = columns.filter((col) => !selectedColumns.includes(col))
-          setColumns(remainingColumns)
-          // Update column types
-          const newColumnTypes = { ...columnTypes }
-          selectedColumns.forEach((col) => {
-            delete newColumnTypes[col]
-          })
-          setColumnTypes(newColumnTypes)
+        if (type === "missing") {
+          newData = handleMissingValues(newData, selectedColumns, strategy || "mean", value)
+        } else if (type === "normalize") {
+          newData = normalizeData(newData, selectedColumns, method || "minmax")
+        } else if (type === "transform") {
+          if (action === "drop") {
+            newData = dropColumns(newData, selectedColumns)
+            const remainingColumns = columns.filter((col) => !selectedColumns.includes(col))
+            setColumns(remainingColumns)
+            const newColumnTypes = { ...columnTypes }
+            selectedColumns.forEach((col) => {
+              delete newColumnTypes[col]
+            })
+            setColumnTypes(newColumnTypes)
+          }
         }
+
+        setProcessedData(newData)
+
+        // Refresh data profile after preprocessing
+        setTimeout(() => {
+          generateDataProfile().finally(() => {
+            setIsLoading(false)
+            resolve()
+          })
+        }, 100)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to process data")
+        setIsLoading(false)
+        reject(err)
       }
-
-      setProcessedData(newData)
-
-      // Refresh data profile after preprocessing
-      setTimeout(() => {
-        generateDataProfile()
-      }, 100)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to process data")
-    } finally {
-      setIsLoading(false)
-    }
+    })
   }
 
   // Drop columns
@@ -924,6 +1140,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return "Notes"
       case "code":
         return "Code"
+      case "ml-trainer":
+        return "ML Model Trainer"
+      case "ml-predictor":
+        return "ML Predictor"
+      case "ml-insights":
+        return "ML Insights"
       default:
         return "New Cell"
     }
@@ -998,56 +1220,59 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // Handle outliers
-  const handleOutliers = (columns: string[], method: string, action: string) => {
-    setIsLoading(true)
-    try {
-      let newData = [...processedData]
+  const handleOutliers = async (columns: string[], method: string, action: string) => {
+    return new Promise<void>((resolve, reject) => {
+      setIsLoading(true)
+      try {
+        let newData = [...processedData]
 
-      columns.forEach((column) => {
-        if (columnTypes[column] !== "number") return
+        columns.forEach((column) => {
+          if (columnTypes[column] !== "number") return
 
-        const outlierResults = detectOutliers([column], method)
-        const outlierIndices = outlierResults[0]?.outliers || []
+          const outlierResults = detectOutliers([column], method)
+          const outlierIndices = outlierResults[0]?.outliers || []
 
-        if (action === "remove") {
-          // Remove rows with outliers
-          newData = newData.filter((_, index) => !outlierIndices.includes(index))
-        } else if (action === "cap") {
-          // Cap outliers to percentile values
-          const values = newData
-            .map((row) => Number(row[column]))
-            .filter((v) => !isNaN(v))
-            .sort((a, b) => a - b)
-          const p5 = values[Math.floor(values.length * 0.05)]
-          const p95 = values[Math.floor(values.length * 0.95)]
+          if (action === "remove") {
+            newData = newData.filter((_, index) => !outlierIndices.includes(index))
+          } else if (action === "cap") {
+            const values = newData
+              .map((row) => Number(row[column]))
+              .filter((v) => !isNaN(v))
+              .sort((a, b) => a - b)
+            const p5 = values[Math.floor(values.length * 0.05)] || 0
+            const p95 = values[Math.floor(values.length * 0.95)] || 0
 
-          newData.forEach((row) => {
-            const value = Number(row[column])
-            if (value < p5) row[column] = p5
-            if (value > p95) row[column] = p95
+            newData.forEach((row) => {
+              const value = Number(row[column])
+              if (!isNaN(value)) {
+                if (value < p5) row[column] = p5
+                if (value > p95) row[column] = p95
+              }
+            })
+          } else if (action === "transform") {
+            newData.forEach((row) => {
+              const value = Number(row[column])
+              if (!isNaN(value) && value > 0) {
+                row[column] = Math.log(value)
+              }
+            })
+          }
+        })
+
+        setProcessedData(newData)
+
+        setTimeout(() => {
+          generateDataProfile().finally(() => {
+            setIsLoading(false)
+            resolve()
           })
-        } else if (action === "transform") {
-          // Log transformation
-          newData.forEach((row) => {
-            const value = Number(row[column])
-            if (value > 0) {
-              row[column] = Math.log(value)
-            }
-          })
-        }
-      })
-
-      setProcessedData(newData)
-
-      // Refresh data profile after outlier handling
-      setTimeout(() => {
-        generateDataProfile()
-      }, 100)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to handle outliers")
-    } finally {
-      setIsLoading(false)
-    }
+        }, 100)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to handle outliers")
+        setIsLoading(false)
+        reject(err)
+      }
+    })
   }
 
   // Create new feature
@@ -1144,22 +1369,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }
 
   // Execute custom Python-like code
-  const executeCustomCode = async (code: string): Promise<{ success: boolean; result?: any; error?: string }> => {
+  const executeCustomCode = async (
+    code: string,
+  ): Promise<{ success: boolean; result?: any; error?: string; output?: string }> => {
     try {
+      const logs: string[] = []
+
       // Create a safe execution context with data access
       const context = {
         data: processedData,
         columns: columns,
         Math: Math,
-        console: console,
-        // Add common data manipulation functions
+        console: {
+          log: (...args: any[]) => {
+            logs.push(
+              args.map((arg) => (typeof arg === "object" ? JSON.stringify(arg, null, 2) : String(arg))).join(" "),
+            )
+          },
+        },
         filter: (condition: (row: any) => boolean) => processedData.filter(condition),
         map: (transform: (row: any) => any) => processedData.map(transform),
         reduce: (reducer: (acc: any, row: any) => any, initial: any) => processedData.reduce(reducer, initial),
         groupBy: (key: string) => {
           const groups: Record<string, any[]> = {}
           processedData.forEach((row) => {
-            const groupKey = row[key]
+            const groupKey = String(row[key] || "undefined")
             if (!groups[groupKey]) groups[groupKey] = []
             groups[groupKey].push(row)
           })
@@ -1167,6 +1401,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         },
         aggregate: (column: string, operation: string) => {
           const values = processedData.map((row) => Number(row[column])).filter((v) => !isNaN(v))
+          if (values.length === 0) return 0
+
           switch (operation) {
             case "sum":
               return values.reduce((a, b) => a + b, 0)
@@ -1189,16 +1425,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
         ...Object.keys(context),
         `
         "use strict";
-        ${code}
+        try {
+          ${code}
+        } catch (error) {
+          throw new Error('Code execution error: ' + error.message);
+        }
       `,
       )
 
       const result = func(...Object.values(context))
-      return { success: true, result }
+      return { success: true, result, output: logs.join("\n") }
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Code execution failed",
+        output: "",
       }
     }
   }
@@ -1240,6 +1481,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
     getDataSample,
     generateDataProfile,
     refreshDataProfile,
+    trainedModels,
+    saveTrainedModel,
+    getTrainedModels,
+    removeTrainedModel,
+    modelComparisons,
+    saveModelComparison,
+    getModelComparisons,
+    removeModelComparison,
+    downloadModel,
   }
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>

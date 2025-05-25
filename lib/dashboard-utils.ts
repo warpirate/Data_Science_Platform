@@ -10,27 +10,36 @@ export function formatNumber(
     compact?: boolean
   } = {},
 ): string {
+  if (typeof value !== "number" || !isFinite(value)) {
+    return "N/A"
+  }
+
   const { format = "number", decimals = 2, currency = "USD", compact = false } = options
 
-  const formatOptions: Intl.NumberFormatOptions = {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }
+  try {
+    const formatOptions: Intl.NumberFormatOptions = {
+      minimumFractionDigits: Math.max(0, decimals),
+      maximumFractionDigits: Math.max(0, decimals),
+    }
 
-  if (compact) {
-    formatOptions.notation = "compact"
-  }
+    if (compact) {
+      formatOptions.notation = "compact"
+    }
 
-  if (format === "currency") {
-    formatOptions.style = "currency"
-    formatOptions.currency = currency
-  } else if (format === "percent") {
-    formatOptions.style = "percent"
-    // For percentages, divide by 100 if the value is greater than 1
-    value = value > 1 ? value / 100 : value
-  }
+    if (format === "currency") {
+      formatOptions.style = "currency"
+      formatOptions.currency = currency
+    } else if (format === "percent") {
+      formatOptions.style = "percent"
+      // For percentages, divide by 100 if the value is greater than 1
+      value = value > 1 ? value / 100 : value
+    }
 
-  return new Intl.NumberFormat("en-US", formatOptions).format(value)
+    return new Intl.NumberFormat("en-US", formatOptions).format(value)
+  } catch (error) {
+    console.error("Error formatting number:", error)
+    return String(value)
+  }
 }
 
 // Calculate aggregation on an array of numbers
@@ -38,26 +47,31 @@ export function calculateAggregation(
   values: number[],
   aggregation: "sum" | "mean" | "median" | "min" | "max" | "count",
 ): number {
-  if (!values.length) return 0
+  if (!Array.isArray(values) || values.length === 0) return 0
+
+  // Filter out invalid values
+  const validValues = values.filter((val) => typeof val === "number" && !isNaN(val) && isFinite(val))
+
+  if (validValues.length === 0) return 0
 
   switch (aggregation) {
     case "sum":
-      return values.reduce((sum, val) => sum + val, 0)
+      return validValues.reduce((sum, val) => sum + val, 0)
     case "mean":
-      return values.reduce((sum, val) => sum + val, 0) / values.length
+      return validValues.reduce((sum, val) => sum + val, 0) / validValues.length
     case "median": {
-      const sorted = [...values].sort((a, b) => a - b)
+      const sorted = [...validValues].sort((a, b) => a - b)
       const mid = Math.floor(sorted.length / 2)
       return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
     }
     case "min":
-      return Math.min(...values)
+      return Math.min(...validValues)
     case "max":
-      return Math.max(...values)
+      return Math.max(...validValues)
     case "count":
-      return values.length
+      return validValues.length
     default:
-      return values.reduce((sum, val) => sum + val, 0) / values.length
+      return validValues.reduce((sum, val) => sum + val, 0) / validValues.length
   }
 }
 
@@ -96,30 +110,46 @@ export function filterData(
   data: Record<string, any>[],
   filters: Array<{ column: string; operator: string; value: string }>,
 ): Record<string, any>[] {
-  if (!filters.length) return data
+  if (!Array.isArray(data) || !Array.isArray(filters) || filters.length === 0) return data
 
-  return data.filter((row) => {
-    return filters.every((filter) => {
-      const { column, operator, value } = filter
-      if (!column || value === undefined || value === null) return true
+  try {
+    return data.filter((row) => {
+      if (!row || typeof row !== "object") return false
 
-      const cellValue = row[column]
-      if (cellValue === undefined || cellValue === null) return false
+      return filters.every((filter) => {
+        const { column, operator, value } = filter
+        if (!column || !operator || value === undefined || value === null || value === "") return true
 
-      switch (operator) {
-        case "equal":
-          return String(cellValue) === value
-        case "notEqual":
-          return String(cellValue) !== value
-        case "greater":
-          return Number(cellValue) > Number(value)
-        case "less":
-          return Number(cellValue) < Number(value)
-        case "contains":
-          return String(cellValue).toLowerCase().includes(value.toLowerCase())
-        default:
+        const cellValue = row[column]
+        if (cellValue === undefined || cellValue === null) return false
+
+        try {
+          switch (operator) {
+            case "equal":
+              return String(cellValue) === value
+            case "notEqual":
+              return String(cellValue) !== value
+            case "greater":
+              const numCellValue = Number(cellValue)
+              const numValue = Number(value)
+              return !isNaN(numCellValue) && !isNaN(numValue) && numCellValue > numValue
+            case "less":
+              const numCellValueLess = Number(cellValue)
+              const numValueLess = Number(value)
+              return !isNaN(numCellValueLess) && !isNaN(numValueLess) && numCellValueLess < numValueLess
+            case "contains":
+              return String(cellValue).toLowerCase().includes(value.toLowerCase())
+            default:
+              return true
+          }
+        } catch (error) {
+          console.warn(`Filter error for column ${column}:`, error)
           return true
-      }
+        }
+      })
     })
-  })
+  } catch (error) {
+    console.error("Error filtering data:", error)
+    return data
+  }
 }

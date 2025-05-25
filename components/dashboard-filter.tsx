@@ -40,9 +40,15 @@ export function DashboardFilter({ config }: DashboardFilterProps) {
   }
 
   const updateFilter = (index: number, field: string, value: string) => {
-    const newFilters = [...filters]
-    newFilters[index] = { ...newFilters[index], [field]: value }
-    setFilters(newFilters)
+    try {
+      const newFilters = [...filters]
+      if (newFilters[index]) {
+        newFilters[index] = { ...newFilters[index], [field]: value }
+        setFilters(newFilters)
+      }
+    } catch (error) {
+      console.error("Error updating filter:", error)
+    }
   }
 
   const removeFilter = (index: number) => {
@@ -50,12 +56,30 @@ export function DashboardFilter({ config }: DashboardFilterProps) {
   }
 
   const applyFilters = () => {
-    setActiveFilters([...filters])
-    setShowSettings(false)
+    try {
+      const validFilters = filters.filter(
+        (filter) =>
+          filter.column &&
+          filter.operator &&
+          filter.value !== null &&
+          filter.value !== undefined &&
+          filter.value !== "",
+      )
+      setActiveFilters([...validFilters])
+      setShowSettings(false)
+    } catch (error) {
+      console.error("Error applying filters:", error)
+    }
   }
 
   const removeActiveFilter = (index: number) => {
-    setActiveFilters(activeFilters.filter((_, i) => i !== index))
+    try {
+      if (index >= 0 && index < activeFilters.length) {
+        setActiveFilters(activeFilters.filter((_, i) => i !== index))
+      }
+    } catch (error) {
+      console.error("Error removing filter:", error)
+    }
   }
 
   const getOperatorLabel = (operator: string) => {

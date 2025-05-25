@@ -41,46 +41,54 @@ export function DashboardMetric({ config }: DashboardMetricProps) {
 
   // Calculate metric value
   const calculateMetric = () => {
-    if (!column || processedData.length === 0) return "N/A"
+    try {
+      if (!column || processedData.length === 0) return "N/A"
 
-    const values = processedData.map((row) => Number(row[column])).filter((val) => !isNaN(val))
+      const values = processedData.map((row) => Number(row[column])).filter((val) => !isNaN(val) && isFinite(val))
 
-    if (values.length === 0) return "N/A"
+      if (values.length === 0) return "N/A"
 
-    let result: number
+      let result: number
 
-    switch (aggregation) {
-      case "mean":
-        result = values.reduce((sum, val) => sum + val, 0) / values.length
-        break
-      case "sum":
-        result = values.reduce((sum, val) => sum + val, 0)
-        break
-      case "min":
-        result = Math.min(...values)
-        break
-      case "max":
-        result = Math.max(...values)
-        break
-      case "count":
-        result = values.length
-        break
-      default:
-        result = values.reduce((sum, val) => sum + val, 0) / values.length
-    }
+      switch (aggregation) {
+        case "mean":
+          result = values.reduce((sum, val) => sum + val, 0) / values.length
+          break
+        case "sum":
+          result = values.reduce((sum, val) => sum + val, 0)
+          break
+        case "min":
+          result = Math.min(...values)
+          break
+        case "max":
+          result = Math.max(...values)
+          break
+        case "count":
+          result = values.length
+          break
+        default:
+          result = values.reduce((sum, val) => sum + val, 0) / values.length
+      }
 
-    // Format the result
-    if (format === "currency") {
-      return formatCurrency(result)
-    } else if (format === "percent") {
-      return formatPercent(result)
-    } else {
-      return formatNumber(result)
+      if (!isFinite(result)) return "N/A"
+
+      // Format the result
+      if (format === "currency") {
+        return formatCurrency(result)
+      } else if (format === "percent") {
+        return formatPercent(result)
+      } else {
+        return formatNumber(result)
+      }
+    } catch (error) {
+      console.error("Error calculating metric:", error)
+      return "Error"
     }
   }
 
   // Format as currency
   const formatCurrency = (value: number) => {
+    if (!isFinite(value)) return "N/A"
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
@@ -91,6 +99,7 @@ export function DashboardMetric({ config }: DashboardMetricProps) {
 
   // Format as percent
   const formatPercent = (value: number) => {
+    if (!isFinite(value)) return "N/A"
     return new Intl.NumberFormat("en-US", {
       style: "percent",
       minimumFractionDigits: 2,
@@ -100,6 +109,7 @@ export function DashboardMetric({ config }: DashboardMetricProps) {
 
   // Format as number
   const formatNumber = (value: number) => {
+    if (!isFinite(value)) return "N/A"
     return new Intl.NumberFormat("en-US", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,

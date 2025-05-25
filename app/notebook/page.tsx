@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useMemo } from "react"
 import Link from "next/link"
 import {
   FileSpreadsheet,
@@ -19,16 +19,24 @@ import {
   FileText,
   Code,
   Info,
+  GraduationCap,
+  Calculator,
+  ContrastIcon as Compare,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { FileUpload } from "@/components/file-upload"
 import { useData, type CellType } from "@/lib/data-context"
 import { DataTable } from "@/components/data-table"
 import { DataVisualizer } from "@/components/data-visualizer"
 import { DataPreprocessor } from "@/components/data-preprocessor"
 import { DataExplorer } from "@/components/data-explorer"
+import { DataProfiler } from "@/components/data-profiler"
 import { TextEditor } from "@/components/text-editor"
 import { CodeEditor } from "@/components/code-editor"
+import { MLModelTrainer } from "@/components/ml-model-trainer"
+import { MLPredictor } from "@/components/ml-predictor"
+import { MLModelComparison } from "@/components/ml-model-comparison"
+import { SmartLayout } from "@/components/smart-layout"
+import { DataUploadPrompt } from "@/components/data-upload-prompt"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,7 +57,8 @@ import { Input } from "@/components/ui/input"
 import { toast } from "@/components/ui/use-toast"
 import { Toaster } from "@/components/ui/toaster"
 import { ModeToggle } from "@/components/mode-toggle"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 
 export default function NotebookPage() {
   const {
@@ -69,9 +78,61 @@ export default function NotebookPage() {
   const [newCellTitle, setNewCellTitle] = useState("")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [cellToDelete, setCellToDelete] = useState<string | null>(null)
-  const hasData = processedData.length > 0
+
+  const hasData = useMemo(() => processedData.length > 0, [processedData.length])
   const dragItem = useRef<number | null>(null)
   const dragOverItem = useRef<number | null>(null)
+
+  const cellTypeOptions = useMemo(
+    () => [
+      { value: "data" as CellType, label: "Data Overview", icon: Table, description: "View and explore your dataset" },
+      {
+        value: "profile" as CellType,
+        label: "Data Profile",
+        icon: Info,
+        description: "Detailed data profiling and quality analysis",
+      },
+      {
+        value: "exploration" as CellType,
+        label: "Data Exploration",
+        icon: LineChart,
+        description: "Interactive data exploration tools",
+      },
+      {
+        value: "visualization" as CellType,
+        label: "Visualization",
+        icon: BarChart3,
+        description: "Create charts and graphs",
+      },
+      {
+        value: "preprocessing" as CellType,
+        label: "Preprocessing",
+        icon: Filter,
+        description: "Clean and transform your data",
+      },
+      {
+        value: "ml-trainer" as CellType,
+        label: "ML Trainer",
+        icon: GraduationCap,
+        description: "Train machine learning models",
+      },
+      {
+        value: "ml-predictor" as CellType,
+        label: "ML Predictor",
+        icon: Calculator,
+        description: "Make predictions with trained models",
+      },
+      {
+        value: "ml-insights" as CellType,
+        label: "ML Comparison",
+        icon: Compare,
+        description: "Compare multiple ML models",
+      },
+      { value: "text" as CellType, label: "Notes", icon: FileText, description: "Add text notes and documentation" },
+      { value: "code" as CellType, label: "Code", icon: Code, description: "Execute custom code" },
+    ],
+    [],
+  )
 
   const handleDragStart = (position: number) => {
     dragItem.current = position
@@ -82,26 +143,35 @@ export default function NotebookPage() {
   }
 
   const handleDrop = () => {
-    if (dragItem.current === null || dragOverItem.current === null) return
+    try {
+      if (dragItem.current === null || dragOverItem.current === null) return
+      if (dragItem.current === dragOverItem.current) return
 
-    // Call the reorderCells function from the data context
-    reorderCells(dragItem.current, dragOverItem.current)
+      reorderCells(dragItem.current, dragOverItem.current)
 
-    // Reset the drag references
-    dragItem.current = null
-    dragOverItem.current = null
+      dragItem.current = null
+      dragOverItem.current = null
 
-    // Show a toast notification
-    toast({
-      title: "Cell reordered",
-      description: "The notebook cell has been moved to a new position.",
-    })
+      toast({
+        title: "Cell reordered",
+        description: "The notebook cell has been moved to a new position.",
+      })
+    } catch (error) {
+      console.error("Error reordering cells:", error)
+      toast({
+        title: "Error",
+        description: "Failed to reorder cell. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   const renderCellContent = (type: CellType) => {
     switch (type) {
       case "data":
         return <DataTable />
+      case "profile":
+        return <DataProfiler />
       case "visualization":
         return <DataVisualizer />
       case "preprocessing":
@@ -112,44 +182,50 @@ export default function NotebookPage() {
         return <TextEditor />
       case "code":
         return <CodeEditor />
+      case "ml-trainer":
+        return <MLModelTrainer />
+      case "ml-predictor":
+        return <MLPredictor />
+      case "ml-insights":
+        return <MLModelComparison />
       default:
         return <div>Unknown cell type</div>
     }
   }
 
   const getCellIcon = (type: CellType) => {
-    switch (type) {
-      case "data":
-        return <Table className="h-4 w-4" />
-      case "visualization":
-        return <BarChart3 className="h-4 w-4" />
-      case "preprocessing":
-        return <Filter className="h-4 w-4" />
-      case "exploration":
-        return <LineChart className="h-4 w-4" />
-      case "text":
-        return <FileText className="h-4 w-4" />
-      case "code":
-        return <Code className="h-4 w-4" />
-      default:
-        return <FileText className="h-4 w-4" />
-    }
+    const option = cellTypeOptions.find((opt) => opt.value === type)
+    const IconComponent = option?.icon || FileText
+    return <IconComponent className="h-4 w-4" />
   }
 
   const handleEditTitle = (id: string, currentTitle: string) => {
-    setEditingCellId(id)
-    setNewCellTitle(currentTitle)
+    try {
+      setEditingCellId(id)
+      setNewCellTitle(currentTitle)
+    } catch (error) {
+      console.error("Error editing title:", error)
+    }
   }
 
   const handleSaveTitle = () => {
-    if (editingCellId && newCellTitle.trim()) {
-      updateCellTitle(editingCellId, newCellTitle)
-      setEditingCellId(null)
-      setNewCellTitle("")
+    try {
+      if (editingCellId && newCellTitle.trim()) {
+        updateCellTitle(editingCellId, newCellTitle)
+        setEditingCellId(null)
+        setNewCellTitle("")
 
+        toast({
+          title: "Title updated",
+          description: "The cell title has been updated successfully.",
+        })
+      }
+    } catch (error) {
+      console.error("Error saving title:", error)
       toast({
-        title: "Title updated",
-        description: "The cell title has been updated successfully.",
+        title: "Error",
+        description: "Failed to update title. Please try again.",
+        variant: "destructive",
       })
     }
   }
@@ -160,14 +236,23 @@ export default function NotebookPage() {
   }
 
   const confirmDeleteCell = () => {
-    if (cellToDelete) {
-      removeCell(cellToDelete)
-      setCellToDelete(null)
-      setDeleteDialogOpen(false)
+    try {
+      if (cellToDelete) {
+        removeCell(cellToDelete)
+        setCellToDelete(null)
+        setDeleteDialogOpen(false)
 
+        toast({
+          title: "Cell deleted",
+          description: "The notebook cell has been removed.",
+        })
+      }
+    } catch (error) {
+      console.error("Error deleting cell:", error)
       toast({
-        title: "Cell deleted",
-        description: "The notebook cell has been removed.",
+        title: "Error",
+        description: "Failed to delete cell. Please try again.",
+        variant: "destructive",
       })
     }
   }
@@ -177,7 +262,7 @@ export default function NotebookPage() {
 
     toast({
       title: "Cell added",
-      description: `A new ${type} cell has been added to your notebook.`,
+      description: `A new ${cellTypeOptions.find((opt) => opt.value === type)?.label} cell has been added to your notebook.`,
     })
   }
 
@@ -189,6 +274,14 @@ export default function NotebookPage() {
       description: `Your data has been exported as ${format.toUpperCase()}.`,
     })
   }
+
+  const breadcrumbItems = useMemo(
+    () => [
+      { label: "Home", href: "/" },
+      { label: "Notebook", current: true },
+    ],
+    [],
+  )
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -211,6 +304,12 @@ export default function NotebookPage() {
               <Link href="/notebook" className="flex items-center space-x-2 p-2 rounded-md bg-muted">
                 <BookOpen className="h-5 w-5" />
                 <span>My Notebook</span>
+              </Link>
+            </li>
+            <li>
+              <Link href="/dashboard-creator" className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted">
+                <BarChart3 className="h-5 w-5" />
+                <span>Dashboard Creator</span>
               </Link>
             </li>
           </ul>
@@ -241,8 +340,8 @@ export default function NotebookPage() {
               <Link href="/notebook" className="text-foreground">
                 Notebook
               </Link>
-              <Link href="/docs" className="transition-colors hover:text-foreground/80">
-                Documentation
+              <Link href="/dashboard-creator" className="transition-colors hover:text-foreground/80">
+                Dashboard Creator
               </Link>
             </nav>
           </div>
@@ -263,153 +362,221 @@ export default function NotebookPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 gap-1">
-                  <Plus className="h-3.5 w-3.5" />
-                  <span>Add Cell</span>
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => handleAddCell("data")}>
-                  <Table className="mr-2 h-4 w-4" />
-                  <span>Data Table</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAddCell("visualization")}>
-                  <BarChart3 className="mr-2 h-4 w-4" />
-                  <span>Visualization</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAddCell("preprocessing")}>
-                  <Filter className="mr-2 h-4 w-4" />
-                  <span>Preprocessing</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAddCell("exploration")}>
-                  <LineChart className="mr-2 h-4 w-4" />
-                  <span>Exploration</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleAddCell("text")}>
-                  <FileText className="mr-2 h-4 w-4" />
-                  <span>Text Note</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleAddCell("code")}>
-                  <Code className="mr-2 h-4 w-4" />
-                  <span>Code</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {hasData && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-1">
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add Cell</span>
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleAddCell("data")}>
+                    <Table className="mr-2 h-4 w-4" />
+                    <span>Data Table</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddCell("profile")}>
+                    <Info className="mr-2 h-4 w-4" />
+                    <span>Data Profile</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddCell("visualization")}>
+                    <BarChart3 className="mr-2 h-4 w-4" />
+                    <span>Visualization</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddCell("preprocessing")}>
+                    <Filter className="mr-2 h-4 w-4" />
+                    <span>Preprocessing</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddCell("exploration")}>
+                    <LineChart className="mr-2 h-4 w-4" />
+                    <span>Exploration</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleAddCell("text")}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    <span>Text Note</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddCell("code")}>
+                    <Code className="mr-2 h-4 w-4" />
+                    <span>Code</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleAddCell("ml-trainer")}>
+                    <GraduationCap className="mr-2 h-4 w-4" />
+                    <span>ML Model Trainer</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddCell("ml-predictor")}>
+                    <Calculator className="mr-2 h-4 w-4" />
+                    <span>ML Predictor</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddCell("ml-insights")}>
+                    <Compare className="mr-2 h-4 w-4" />
+                    <span>ML Comparison</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
       </header>
 
       <main id="main-content" className={`flex-1 ${sidebarOpen ? "app-main sidebar-open" : "app-main"}`}>
-        <div className="container py-6">
-          <div className="flex flex-col space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-3xl font-bold tracking-tight">My Notebook</h1>
-                {fileName && <p className="text-sm text-muted-foreground">Current file: {fileName}</p>}
+        <SmartLayout
+          title="Data Analysis Notebook"
+          description="Analyze, visualize, and build machine learning models with your data"
+          breadcrumbItems={breadcrumbItems}
+          requiresData={false}
+          showDataInfo={hasData}
+        >
+          {isLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <div className="flex flex-col items-center gap-2">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+                <p className="text-sm text-muted-foreground">Processing your data...</p>
               </div>
             </div>
-
-            {isLoading ? (
-              <div className="flex items-center justify-center py-24">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-                  <p className="text-sm text-muted-foreground">Processing your data...</p>
-                </div>
-              </div>
-            ) : hasData ? (
-              <div className="space-y-6">
-                {notebookCells.length === 0 && (
-                  <Alert className="bg-muted">
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      Your notebook is empty. Add cells using the "Add Cell" button above.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {notebookCells.map((cell, index) => (
-                  <div
-                    key={cell.id}
-                    className="app-cell fade-in"
-                    draggable
-                    onDragStart={() => handleDragStart(index)}
-                    onDragEnter={() => handleDragEnter(index)}
-                    onDragEnd={handleDrop}
-                    onDragOver={(e) => e.preventDefault()}
-                  >
-                    <div className="app-cell-header">
-                      <div className="flex items-center gap-2">
-                        <MoveVertical
-                          className="h-4 w-4 cursor-move text-muted-foreground"
-                          aria-label="Drag to reorder"
-                        />
-                        {getCellIcon(cell.type)}
-                        {editingCellId === cell.id ? (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              value={newCellTitle}
-                              onChange={(e) => setNewCellTitle(e.target.value)}
-                              className="h-7 w-64"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  handleSaveTitle()
-                                }
-                              }}
-                              aria-label="Edit cell title"
-                            />
-                            <Button size="sm" onClick={handleSaveTitle} className="h-7">
-                              Save
-                            </Button>
-                          </div>
-                        ) : (
-                          <h3 className="text-sm font-medium">{cell.title}</h3>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleEditTitle(cell.id, cell.title)}
-                          aria-label="Edit title"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleDeleteCell(cell.id)}
-                          aria-label="Delete cell"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+          ) : hasData ? (
+            <div className="space-y-6">
+              {notebookCells.length === 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Welcome to Your Data Notebook</CardTitle>
+                    <CardDescription>
+                      Your data is loaded and ready! Add cells to start analyzing your data.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {cellTypeOptions.slice(0, 6).map((option) => {
+                        const IconComponent = option.icon
+                        return (
+                          <Card
+                            key={option.value}
+                            className="cursor-pointer hover:bg-muted/50 transition-colors"
+                            onClick={() => handleAddCell(option.value)}
+                          >
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-3">
+                                <IconComponent className="h-6 w-6 text-primary" />
+                                <div>
+                                  <h3 className="font-medium">{option.label}</h3>
+                                  <p className="text-sm text-muted-foreground">{option.description}</p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )
+                      })}
                     </div>
-                    <div className="app-cell-content">{renderCellContent(cell.type)}</div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {notebookCells.map((cell, index) => (
+                <div
+                  key={cell.id}
+                  className="app-cell fade-in"
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragEnter={() => handleDragEnter(index)}
+                  onDragEnd={handleDrop}
+                  onDragOver={(e) => e.preventDefault()}
+                >
+                  <div className="app-cell-header">
+                    <div className="flex items-center gap-2">
+                      <MoveVertical
+                        className="h-4 w-4 cursor-move text-muted-foreground"
+                        aria-label="Drag to reorder"
+                      />
+                      {getCellIcon(cell.type)}
+                      {editingCellId === cell.id ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            value={newCellTitle}
+                            onChange={(e) => setNewCellTitle(e.target.value)}
+                            className="h-7 w-64"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                handleSaveTitle()
+                              }
+                            }}
+                            aria-label="Edit cell title"
+                          />
+                          <Button size="sm" onClick={handleSaveTitle} className="h-7">
+                            Save
+                          </Button>
+                        </div>
+                      ) : (
+                        <h3 className="text-sm font-medium">{cell.title}</h3>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-xs">
+                        {cellTypeOptions.find((opt) => opt.value === cell.type)?.label}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleEditTitle(cell.id, cell.title)}
+                        aria-label="Edit title"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => handleDeleteCell(cell.id)}
+                        aria-label="Delete cell"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-12">
-                <div className="w-full max-w-md app-card">
-                  <div className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Upload Data to Get Started</h2>
-                    <p className="text-muted-foreground mb-6">
-                      Upload a CSV or Excel file to begin analyzing your data.
-                    </p>
-                    <FileUpload className="w-full" />
-                  </div>
+                  <div className="app-cell-content">{renderCellContent(cell.type)}</div>
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
+              ))}
+
+              {notebookCells.length > 0 && (
+                <Card className="border-dashed">
+                  <CardContent className="p-6">
+                    <div className="text-center">
+                      <Plus className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-muted-foreground mb-4">Add another cell to continue your analysis</p>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline">
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Cell
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          {cellTypeOptions.map((option) => {
+                            const IconComponent = option.icon
+                            return (
+                              <DropdownMenuItem key={option.value} onClick={() => handleAddCell(option.value)}>
+                                <IconComponent className="mr-2 h-4 w-4" />
+                                <span>{option.label}</span>
+                              </DropdownMenuItem>
+                            )
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          ) : (
+            <DataUploadPrompt
+              title="Upload Data to Get Started"
+              description="Upload a CSV or Excel file to begin analyzing your data in the notebook."
+            />
+          )}
+        </SmartLayout>
       </main>
 
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

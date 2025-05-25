@@ -1,14 +1,15 @@
 "use client"
 
 import { useState } from "react"
-import Link from "next/link"
+import { Navbar } from "@/components/Navbar"
+import { Sidebar } from "@/components/Sidebar"
 import { FileUpload } from "@/components/file-upload"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { BarChart3, FileSpreadsheet, LineChart, PieChart, Upload, Menu, BookOpen, ChevronRight } from "lucide-react"
+import { BarChart3, FileSpreadsheet, LineChart, PieChart, Upload, ChevronRight } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useData } from "@/lib/data-context"
-import { ModeToggle } from "@/components/mode-toggle"
+import Link from "next/link"
 
 export default function HomePage() {
   const router = useRouter()
@@ -25,73 +26,8 @@ export default function HomePage() {
 
   return (
     <div className="flex min-h-screen flex-col">
-      <div className={`app-sidebar ${sidebarOpen ? "open" : ""}`}>
-        <div className="p-4 border-b">
-          <div className="flex items-center space-x-2">
-            <BookOpen className="h-6 w-6" />
-            <h2 className="text-xl font-bold">DataNotebook</h2>
-          </div>
-        </div>
-        <nav className="p-4">
-          <ul className="space-y-2">
-            <li>
-              <Link
-                href="/"
-                className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted"
-                onClick={handleNewProject}
-              >
-                <FileSpreadsheet className="h-5 w-5" />
-                <span>New Project</span>
-              </Link>
-            </li>
-            <li>
-              <Link href="/notebook" className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted">
-                <BookOpen className="h-5 w-5" />
-                <span>My Notebook</span>
-              </Link>
-            </li>
-          </ul>
-        </nav>
-      </div>
-
-      <header className="app-header">
-        <div className="container flex h-16 items-center">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="mr-2"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            aria-label="Toggle sidebar"
-          >
-            <Menu className="h-5 w-5" />
-            <span className="sr-only">Toggle sidebar</span>
-          </Button>
-          <div className="mr-4 hidden md:flex">
-            <Link href="/" className="mr-6 flex items-center space-x-2">
-              <BookOpen className="h-6 w-6" />
-              <span className="hidden font-bold sm:inline-block">DataNotebook</span>
-            </Link>
-            <nav className="flex items-center space-x-6 text-sm font-medium">
-              <Link href="/" className="transition-colors hover:text-foreground/80">
-                Home
-              </Link>
-              <Link href="/notebook" className="transition-colors hover:text-foreground/80">
-                Notebook
-              </Link>
-              <Link href="/docs" className="transition-colors hover:text-foreground/80">
-                Documentation
-              </Link>
-            </nav>
-          </div>
-          <div className="flex flex-1 items-center justify-end space-x-2">
-            <ModeToggle />
-            <Button variant="outline" size="sm" className="h-8 gap-1" onClick={handleNewProject}>
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              <span>New Project</span>
-            </Button>
-          </div>
-        </div>
-      </header>
+      <Navbar onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
+      <Sidebar isOpen={sidebarOpen} />
 
       <main id="main-content" className={`flex-1 ${sidebarOpen ? "app-main sidebar-open" : "app-main"}`}>
         <section className="w-full py-12 md:py-24 lg:py-32 bg-gradient-to-b from-background to-muted/30">

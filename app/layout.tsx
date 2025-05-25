@@ -20,14 +20,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className="space-unit">
+      <body className={`${inter.className} min-h-screen`}>
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
           <DataProvider>
-            {children}
+            <div className="flex min-h-screen flex-col">
+              {children}
+            </div>
             <Toaster />
           </DataProvider>
         </ThemeProvider>
